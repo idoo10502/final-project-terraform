@@ -1,0 +1,65 @@
+name: deploy-env
+
+on:
+  workflow_call:
+    inputs:
+      env:
+        type: string
+        required: true
+      image_tag:
+        type: string
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env }} # prod: waits for the required reviewer
+    concurrency:
+      group: deploy-${{ inputs.env }}
+      cancel-in-progress: false # never kill a running apply
+    defaults:
+      run:
+        working-directory: infra
+    env:
+      AWS_REGION: eu-north-1
+      TF_ARGS: >-
+        -input=false -no-color
+        -var-file=envs/${{ inputs.env }}.tfvars
+        -var=name_prefix=${{ vars.NAME_PREFIX }}
+        -var=image_tag=${{ inputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.10.5"
+          terraform_wrapper: false
+
+      - name: init
+        run: |
+          terraform init -input=false -no-color \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=voting-app/${{ inputs.env }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="use_lockfile=true"
+
+      - name: apply
+        run: terraform apply -auto-approve $TF_ARGS
+
+      - name: smoke test
+        run: |
+          for url in "$(terraform output -raw vote_url)" "$(terraform output -raw result_url)"; do
+            curl --fail --silent --show-error -o /dev/null \
+              --retry 10 --retry-delay 6 --retry-all-errors "$url/healthz"
+            echo "200 OK: $url/healthz"
+          done
+
+      - name: version check (plan must be empty)
+        run: terraform plan -detailed-exitcode $TF_ARGS
