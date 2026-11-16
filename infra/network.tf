@@ -132,14 +132,6 @@ resource "aws_security_group" "ecs" {
     security_groups = [aws_security_group.alb.id]
   }
 
-  ingress {
-    description     = "result from the ALB"
-    from_port       = 8080
-    to_port         = 8080
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
-  }
-
   egress {
     description = "ECR, logs, secrets, Redis, RDS"
     from_port   = 0
