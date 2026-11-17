@@ -31,7 +31,7 @@ module "vote" {
   source = "./modules/service"
 
   name               = "${local.name}-vote"
-  image              = "${data.aws_ecr_repository.service["vote"].repository_url}:nonexistent"
+  image              = "${data.aws_ecr_repository.service["vote"].repository_url}:${var.image_tag}"
   desired_count      = var.desired_count
   cluster_id         = local.service_common.cluster_id
   execution_role_arn = local.service_common.execution_role_arn
